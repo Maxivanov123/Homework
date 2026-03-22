@@ -21,7 +21,8 @@ double len(const std::vector<int>& t, const std::vector<std::vector<double>>& d)
 {
     int n = t.size();
     double l = 0;
-    for (int i = 0; i < n - 1; i++) l += d[t[i]][t[i + 1]];
+    for (int i = 0; i < n - 1; i++)
+        l += d[t[i]][t[i + 1]];
     l += d[t[n - 1]][t[0]];
     return l;
 }
@@ -128,9 +129,11 @@ void opt3(std::vector<int>& t, const std::vector<std::vector<double>>& d)
                         break;
                     }
                 }
-                if (imp) break;
+                if (imp) 
+                    break;
             }
-            if (imp) break;
+            if (imp)
+                break;
         }
     }
 }
@@ -141,7 +144,8 @@ int main()
     std::cin >> file;
 
     std::ifstream f(file);
-    if (!f.is_open()) return 1;
+    if (!f.is_open()) 
+        return 1;
 
     int n;
     f >> n;
