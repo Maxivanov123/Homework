@@ -1,0 +1,175 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <random>
+
+struct item
+{
+    int w, v;
+};
+
+int eval(const std::vector<int>& sol, const std::vector<item>& items, int cap, int& totalweight)
+{
+    int tw = 0, tv = 0;
+    for (size_t i = 0; i < sol.size(); i++)
+    {
+        if (sol[i])
+        {
+            tw += items[i].w;
+            tv += items[i].v;
+        }
+    }
+    totalweight = tw;
+    return tw <= cap ? tv : 0;
+}
+
+std::vector<int> genetic_algorithm(const std::vector<item>& items, int cap, std::mt19937& gen)
+{
+    int n = items.size();
+    int population_size = 200;
+    int generations = 500;
+    double mutation_rate = 0.08;
+    double crossover_rate = 0.85;
+
+    std::uniform_int_distribution<> dis(0, 1);
+    std::uniform_real_distribution<> real_dis(0.0, 1.0);
+    std::uniform_int_distribution<> idx_dis(0, n - 1);
+
+    std::vector<std::vector<int>> population(population_size, std::vector<int>(n, 0));
+
+    for (int i = 0; i < population_size; i++)
+    {
+        for (int j = 0; j < n; j++)
+        {
+            population[i][j] = dis(gen);
+        }
+    }
+
+    std::vector<int> best_sol(n, 0);
+    int best_value = 0;
+    int best_weight = 0;
+
+    for (int g = 0; g < generations; g++)
+    {
+        std::vector<int> fitness(population_size, 0);
+        for (int i = 0; i < population_size; i++)
+        {
+            int tw = 0;
+            fitness[i] = eval(population[i], items, cap, tw);
+        }
+
+        for (int i = 0; i < population_size; i++)
+        {
+            if (fitness[i] > best_value)
+            {
+                best_value = fitness[i];
+                best_sol = population[i];
+                eval(best_sol, items, cap, best_weight);
+            }
+        }
+
+        std::vector<std::vector<int>> new_population(population_size, std::vector<int>(n, 0));
+
+        new_population[0] = best_sol;
+
+        for (int i = 1; i < population_size; i += 2)
+        {
+            int p1 = 0, p2 = 0;
+
+            for (int t = 0; t < 5; t++)
+            {
+                int cand = idx_dis(gen);
+                if (fitness[cand] > fitness[p1]) p1 = cand;
+            }
+            for (int t = 0; t < 5; t++)
+            {
+                int cand = idx_dis(gen);
+                if (fitness[cand] > fitness[p2]) p2 = cand;
+            }
+
+            std::vector<int> parent1 = population[p1];
+            std::vector<int> parent2 = population[p2];
+
+            std::vector<int> child1 = parent1;
+            std::vector<int> child2 = parent2;
+
+            if (real_dis(gen) < crossover_rate)
+            {
+                int point = idx_dis(gen);
+                for (int j = point; j < n; j++)
+                {
+                    child1[j] = parent2[j];
+                    child2[j] = parent1[j];
+                }
+            }
+
+            for (int j = 0; j < n; j++)
+            {
+                if (real_dis(gen) < mutation_rate)
+                    child1[j] = 1 - child1[j];
+                if (real_dis(gen) < mutation_rate)
+                    child2[j] = 1 - child2[j];
+            }
+
+            new_population[i] = child1;
+            if (i + 1 < population_size)
+                new_population[i + 1] = child2;
+        }
+
+        population = new_population;
+    }
+
+    return best_sol;
+}
+
+int main()
+{
+    std::string filename;
+    std::cin >> filename;
+    std::ifstream f(filename.c_str());
+    if (!f.is_open())
+    {
+        std::cerr << "error: cannot open file" << std::endl;
+        return 1;
+    }
+
+    int n, cap;
+    f >> n >> cap;
+    std::vector<item> items(n);
+    for (int i = 0; i < n; i++)
+    {
+        f >> items[i].w >> items[i].v;
+    }
+    f.close();
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    int result = 0;
+    int totalweight = 0;
+    std::vector<int> selected;
+
+    std::vector<int> bestsol = genetic_algorithm(items, cap, gen);
+    result = eval(bestsol, items, cap, totalweight);
+    selected = bestsol;
+
+    std::cout << "best value: " << result << std::endl;
+    std::cout << "total weight: " << totalweight << " / " << cap << std::endl;
+    std::cout << "selected items: ";
+
+    bool first = true;
+    for (int i = 0; i < n; i++)
+    {
+        if (selected[i] == 1)
+        {
+            if (!first)
+                std::cout << ", ";
+            std::cout << i + 1 << " (w=" << items[i].w << ", v=" << items[i].v << ")";
+            first = false;
+        }
+    }
+    std::cout << std::endl;
+
+    return 0;
+}
