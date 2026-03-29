@@ -1,0 +1,152 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <queue>
+
+struct item
+{
+    int w, v;
+};
+
+struct Node
+{
+    int level;
+    int profit;
+    int weight;
+    double bound;
+    std::vector<int> sol;
+};
+
+double calculate_bound(const Node& u, const std::vector<item>& items, int cap)
+{
+    if (u.weight >= cap)
+        return 0.0;
+
+    double profit_bound = u.profit;
+    int j = u.level + 1;
+    int totweight = u.weight;
+
+    while (j < (int)items.size() && totweight + items[j].w <= cap)
+    {
+        totweight += items[j].w;
+        profit_bound += items[j].v;
+        j++;
+    }
+
+    if (j < (int)items.size())
+    {
+        profit_bound += (cap - totweight) * (double)items[j].v / items[j].w;
+    }
+    return profit_bound;
+}
+
+bool cmp(const item& a, const item& b)
+{
+    return (double)a.v / a.w > (double)b.v / b.w;
+}
+
+int main()
+{
+    std::string filename;
+    std::cin >> filename;
+    std::ifstream f(filename.c_str());
+    if (!f.is_open())
+    {
+        std::cerr << "error: cannot open file" << std::endl;
+        return 1;
+    }
+
+    int n, cap;
+    f >> n >> cap;
+    std::vector<item> items(n);
+    for (int i = 0; i < n; i++)
+    {
+        f >> items[i].w >> items[i].v;
+    }
+    f.close();
+
+    std::sort(items.begin(), items.end(), cmp);
+
+    auto compare = [](const Node& a, const Node& b)
+        {
+            return a.bound < b.bound;
+        };
+
+    std::priority_queue<Node, std::vector<Node>, decltype(compare)> pq(compare);
+
+    Node root;
+    root.level = -1;
+    root.profit = 0;
+    root.weight = 0;
+    root.bound = calculate_bound(root, items, cap);
+    root.sol.assign(n, 0);
+
+    pq.push(root);
+
+    int result = 0;
+    int totalweight = 0;
+    std::vector<int> selected(n, 0);
+
+    while (!pq.empty())
+    {
+        Node u = pq.top();
+        pq.pop();
+
+        if (u.bound <= result)
+            continue;
+
+        if (u.level + 1 < n)
+        {
+            Node v1 = u;
+            v1.level++;
+            v1.sol[v1.level] = 0;
+            v1.bound = calculate_bound(v1, items, cap);
+            if (v1.bound > result)
+            {
+                pq.push(v1);
+            }
+
+            if (u.weight + items[u.level + 1].w <= cap)
+            {
+                Node v2 = u;
+                v2.level++;
+                v2.weight += items[v2.level].w;
+                v2.profit += items[v2.level].v;
+                v2.sol[v2.level] = 1;
+
+                if (v2.profit > result)
+                {
+                    result = v2.profit;
+                    totalweight = v2.weight;
+                    selected = v2.sol;
+                }
+
+                v2.bound = calculate_bound(v2, items, cap);
+                if (v2.bound > result)
+                {
+                    pq.push(v2);
+                }
+            }
+        }
+    }
+
+    std::cout << "best value: " << result << std::endl;
+    std::cout << "total weight: " << totalweight << " / " << cap << std::endl;
+    std::cout << "selected items: ";
+
+    bool first = true;
+    for (int i = 0; i < n; i++)
+    {
+        if (selected[i] == 1)
+        {
+            if (!first)
+                std::cout << ", ";
+            std::cout << i + 1 << " (w=" << items[i].w << ", v=" << items[i].v << ")";
+            first = false;
+        }
+    }
+    std::cout << std::endl;
+
+    return 0;
+}
