@@ -1,0 +1,418 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <random>
+#include <queue>
+
+struct Item
+{
+    int w, v;
+};
+
+int eval(const std::vector<int>& sol, const std::vector<Item>& items, int cap, int& totalWeight)
+{
+    int tw = 0, tv = 0;
+    for (size_t i = 0; i < sol.size(); i++)
+        if (sol[i])
+        {
+            tw += items[i].w;
+            tv += items[i].v;
+        }
+
+    totalWeight = tw;
+    return tw <= cap ? tv : 0;
+}
+
+std::vector<int> greedySolution(const std::vector<Item>& items, int cap)
+{
+    int n = items.size();
+    std::vector<int> sol(n, 0);
+    std::vector<int> idx(n);
+    for (int i = 0; i < n; i++) idx[i] = i;
+        std::sort(idx.begin(), idx.end(), [&](int a, int b) 
+            {
+                return (double)items[a].v / items[a].w > (double)items[b].v / items[b].w;
+            });
+
+    int tw = 0;
+    for (int i : idx)
+    {
+        if (tw + items[i].w <= cap)
+        {
+            sol[i] = 1;
+            tw += items[i].w;
+        }
+    }
+    return sol;
+}
+
+std::vector<int> hammingSearch(const std::vector<Item>& items, int cap, std::mt19937& gen)
+{
+    int n = items.size();
+    std::uniform_int_distribution<> dis(0, 1);
+
+    std::vector<int> best = greedySolution(items, cap);
+    int bestWeight = 0;
+    int bestVal = eval(best, items, cap, bestWeight);
+
+    for (int run = 0; run < 100; run++)
+    {
+        std::vector<int> cur;
+        if (run == 0) 
+            cur = best;
+        else
+        {
+            cur = greedySolution(items, cap);
+            for (int i = 0; i < 3; i++)
+            {
+                int idx = dis(gen) % n;
+                cur[idx] = 1 - cur[idx];
+            }
+        }
+
+        int curWeight = 0;
+        int curVal = eval(cur, items, cap, curWeight);
+        bool improved = true;
+
+        while (improved)
+        {
+            improved = false;
+            for (int i = 0; i < n; i++)
+            {
+                cur[i] = 1 - cur[i];
+                int newWeight = 0;
+                int newVal = eval(cur, items, cap, newWeight);
+                if (newVal > curVal)
+                {
+                    curVal = newVal;
+                    curWeight = newWeight;
+                    improved = true;
+                }
+                else 
+                    cur[i] = 1 - cur[i];
+            }
+        }
+
+        if (curVal > bestVal)
+        {
+            bestVal = curVal;
+            bestWeight = curWeight;
+            best = cur;
+        }
+    }
+    return best;
+}
+
+double bound(const std::vector<Item>& items, int cap, int level, int profit, int weight)
+{
+    if (weight >= cap)
+        return 0;
+
+    double b = profit;
+    int j = level + 1;
+    int totweight = weight;
+    int n = items.size();
+
+    while (j < n && totweight + items[j].w <= cap)
+    {
+        totweight += items[j].w;
+        b += items[j].v;
+        j++;
+    }
+
+    if (j < n)
+        b += (cap - totweight) * ((double)items[j].v / items[j].w);
+    return b;
+}
+
+std::vector<int> branchAndBound(const std::vector<Item>& items, int cap, int& bestVal, int& bestWeight)
+{
+    int n = items.size();
+    std::vector<int> idx(n);
+    for (int i = 0; i < n; i++)
+        idx[i] = i;
+
+    std::sort(idx.begin(), idx.end(), [&](int a, int b) 
+        {
+            return (double)items[a].v / items[a].w > (double)items[b].v / items[b].w;
+        });
+
+    std::vector<Item> sorted(n);
+    std::vector<int> origIdx(n);
+    for (int i = 0; i < n; i++)
+    {
+        sorted[i] = items[idx[i]];
+        origIdx[i] = idx[i];
+    }
+
+    struct Node
+    {
+        int level, profit, weight;
+        double bound;
+        std::vector<int> sol;
+    };
+
+    auto cmp = [](const Node& a, const Node& b) 
+        {
+            return a.bound < b.bound;
+        };
+    std::priority_queue<Node, std::vector<Node>, decltype(cmp)> pq(cmp);
+
+    Node root;
+    root.level = -1;
+    root.profit = 0;
+    root.weight = 0;
+    root.bound = bound(sorted, cap, -1, 0, 0);
+    root.sol.assign(n, 0);
+    pq.push(root);
+
+    bestVal = 0;
+    bestWeight = 0;
+    std::vector<int> bestSol(n, 0);
+
+    while (!pq.empty())
+    {
+        Node u = pq.top();
+        pq.pop();
+
+        if (u.bound <= bestVal) 
+            continue;
+        if (u.level + 1 >= n) 
+            continue;
+
+        Node v = u;
+        v.level++;
+        v.sol[v.level] = 0;
+        v.bound = bound(sorted, cap, v.level, v.profit, v.weight);
+        if (v.bound > bestVal) 
+            pq.push(v);
+
+        if (u.weight + sorted[u.level + 1].w <= cap)
+        {
+            Node w = u;
+            w.level++;
+            w.weight += sorted[w.level].w;
+            w.profit += sorted[w.level].v;
+            w.sol[w.level] = 1;
+
+            if (w.profit > bestVal)
+            {
+                bestVal = w.profit;
+                bestWeight = w.weight;
+                bestSol = w.sol;
+            }
+
+            w.bound = bound(sorted, cap, w.level, w.profit, w.weight);
+            if (w.bound > bestVal) 
+                pq.push(w);
+        }
+    }
+
+    std::vector<int> originalSol(n, 0);
+    for (int i = 0; i < n; i++)
+        if (bestSol[i] == 1)
+            originalSol[origIdx[i]] = 1;
+
+    return originalSol;
+}
+
+std::vector<int> geneticAlgorithm(const std::vector<Item>& items, int cap, std::mt19937& gen, int& bestVal, int& bestWeight)
+{
+    int n = items.size();
+    int popSize = 200;
+    int generations = 500;
+    double mutRate = 0.08;
+
+    std::uniform_int_distribution<> dis(0, 1);
+    std::uniform_real_distribution<> realDis(0, 1);
+    std::uniform_int_distribution<> idxDis(0, n - 1);
+
+    std::vector<std::vector<int>> pop(popSize, std::vector<int>(n, 0));
+    std::vector<int> popVal(popSize, 0);
+    std::vector<int> popWeight(popSize, 0);
+
+    for (int i = 0; i < popSize; i++)
+    {
+        for (int j = 0; j < n; j++) pop[i][j] = dis(gen);
+        popVal[i] = eval(pop[i], items, cap, popWeight[i]);
+    }
+
+    bestVal = 0;
+    bestWeight = 0;
+    std::vector<int> bestSol(n, 0);
+
+    for (int g = 0; g < generations; g++)
+    {
+        for (int i = 0; i < popSize; i++)
+        {
+            if (popVal[i] > bestVal)
+            {
+                bestVal = popVal[i];
+                bestWeight = popWeight[i];
+                bestSol = pop[i];
+            }
+        }
+
+        std::vector<std::vector<int>> newPop(popSize, std::vector<int>(n, 0));
+        newPop[0] = bestSol;
+
+        for (int i = 1; i < popSize; i += 2)
+        {
+            int p1 = 0, p2 = 0;
+            for (int t = 0; t < 5; t++)
+            {
+                int c = idxDis(gen);
+                if (popVal[c] > popVal[p1]) 
+                    p1 = c;
+            }
+
+            for (int t = 0; t < 5; t++)
+            {
+                int c = idxDis(gen);
+                if (popVal[c] > popVal[p2])
+                    p2 = c;
+            }
+
+            std::vector<int> child1 = pop[p1];
+            std::vector<int> child2 = pop[p2];
+
+            if (realDis(gen) < 0.85)
+            {
+                int point = idxDis(gen);
+                for (int j = point; j < n; j++)
+                {
+                    child1[j] = pop[p2][j];
+                    child2[j] = pop[p1][j];
+                }
+            }
+
+            for (int j = 0; j < n; j++)
+            {
+                if (realDis(gen) < mutRate)
+                    child1[j] = 1 - child1[j];
+                if (realDis(gen) < mutRate) 
+                    child2[j] = 1 - child2[j];
+            }
+
+            newPop[i] = child1;
+            if (i + 1 < popSize)
+                newPop[i + 1] = child2;
+        }
+
+        pop = newPop;
+        for (int i = 0; i < popSize; i++)
+            popVal[i] = eval(pop[i], items, cap, popWeight[i]);
+    }
+
+    return bestSol;
+}
+
+int main()
+{
+    char filename[100];
+    std::cin >> filename;
+
+    std::ifstream f(filename);
+    if (!f.is_open())
+    {
+        std::cerr << "Error: Cannot open file" << std::endl;
+        return 1;
+    }
+
+    int n, cap;
+    f >> n >> cap;
+
+    std::vector<Item> items(n);
+    for (int i = 0; i < n; i++)
+        f >> items[i].w >> items[i].v;
+
+    f.close();
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    std::vector<int> greedySol = greedySolution(items, cap);
+    int greedyWeight = 0;
+    int greedyVal = eval(greedySol, items, cap, greedyWeight);
+
+    std::cout << "Greedy algorythm:" << std::endl;
+    std::cout << "Best value: " << greedyVal << std::endl;
+    std::cout << "Total weight: " << greedyWeight << " / " << cap << std::endl;
+    std::cout << "Selected items: ";
+    bool first = true;
+    for (int i = 0; i < n; i++)
+    {
+        if (greedySol[i])
+        {
+            if (!first) 
+                std::cout << ", ";
+            std::cout << i + 1 << " (w=" << items[i].w << ", v=" << items[i].v << ")";
+            first = false;
+        }
+    }
+    std::cout << "\n" << std::endl;
+
+    std::vector<int> hammingSol = hammingSearch(items, cap, gen);
+    int hammingWeight = 0;
+    int hammingVal = eval(hammingSol, items, cap, hammingWeight);
+
+    std::cout << "Hamming search:" << std::endl;
+    std::cout << "Best value: " << hammingVal << std::endl;
+    std::cout << "Total weight: " << hammingWeight << " / " << cap << std::endl;
+    std::cout << "Selected items: ";
+    first = true;
+    for (int i = 0; i < n; i++)
+    {
+        if (hammingSol[i])
+        {
+            if (!first)
+                std::cout << ", ";
+            std::cout << i + 1 << " (w=" << items[i].w << ", v=" << items[i].v << ")";
+            first = false;
+        }
+    }
+    std::cout << "\n" << std::endl;
+
+    int bbVal = 0, bbWeight = 0;
+    std::vector<int> bbSol = branchAndBound(items, cap, bbVal, bbWeight);
+
+    std::cout << "Branch and bound:" << std::endl;
+    std::cout << "Best value: " << bbVal << std::endl;
+    std::cout << "Total weight: " << bbWeight << " / " << cap << std::endl;
+    std::cout << "Selected items: ";
+    first = true;
+    for (int i = 0; i < n; i++)
+    {
+        if (bbSol[i])
+        {
+            if (!first)
+                std::cout << ", ";
+            std::cout << i + 1 << " (w=" << items[i].w << ", v=" << items[i].v << ")";
+            first = false;
+        }
+    }
+    std::cout << "\n" << std::endl;
+
+    int gaVal = 0, gaWeight = 0;
+    std::vector<int> gaSol = geneticAlgorithm(items, cap, gen, gaVal, gaWeight);
+
+    std::cout << "Genetic algorythm:" << std::endl;
+    std::cout << "Best value: " << gaVal << std::endl;
+    std::cout << "Total weight: " << gaWeight << " / " << cap << std::endl;
+    std::cout << "Selected items: ";
+    first = true;
+    for (int i = 0; i < n; i++)
+    {
+        if (gaSol[i])
+        {
+            if (!first) 
+                std::cout << ", ";
+            std::cout << i + 1 << " (w=" << items[i].w << ", v=" << items[i].v << ")";
+            first = false;
+        }
+    }
+    std::cout << std::endl;
+
+    return 0;
+}
