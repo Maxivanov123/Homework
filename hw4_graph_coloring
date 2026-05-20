@@ -1,0 +1,122 @@
+#include <iostream>
+#include <vector>
+#include <fstream>
+#include <string>
+#include <minisat/core/Solver.h>
+
+using namespace Minisat;
+using namespace std;
+
+struct Edge 
+{
+    int u, v;
+};
+
+void solveGraphColoring(int num_vertices, const vector<Edge>& edges, int num_colors) 
+{
+    Solver solver;
+
+    int total_vars = num_vertices * num_colors;
+    for (int i = 0; i < total_vars; ++i) 
+    {
+        solver.newVar();
+    }
+
+    for (int v = 0; v < num_vertices; ++v) 
+    {
+        vec<Lit> clause;
+        for (int c = 0; c < num_colors; ++c) 
+        {
+            int var_id = v * num_colors + c;
+            clause.push(mkLit(var_id));
+        }
+        solver.addClause(clause);
+    }
+
+    for (int v = 0; v < num_vertices; ++v) 
+    {
+        for (int c1 = 0; c1 < num_colors; ++c1) 
+        {
+            for (int c2 = c1 + 1; c2 < num_colors; ++c2) 
+            {
+                int var1 = v * num_colors + c1;
+                int var2 = v * num_colors + c2;
+                solver.addClause(~mkLit(var1), ~mkLit(var2));
+            }
+        }
+    }
+
+    for (vector<Edge>::const_iterator it = edges.begin(); it != edges.end(); ++it) 
+    {
+        Edge edge = *it;
+        if (edge.u < num_vertices && edge.v < num_vertices) 
+        {
+            for (int c = 0; c < num_colors; ++c) 
+            {
+                int var_u = edge.u * num_colors + c;
+                int var_v = edge.v * num_colors + c;
+                solver.addClause(~mkLit(var_u), ~mkLit(var_v));
+            }
+        }
+    }
+
+    if (solver.solve()) 
+    {
+        cout << "SATISFIABLE" << endl;
+        for (int v = 0; v < num_vertices; ++v) 
+        {
+            for (int c = 0; c < num_colors; ++c) 
+            {
+                int var_id = v * num_colors + c;
+                if (solver.modelValue(var_id) == l_True) 
+                {
+                    cout << v << " " << c << endl;
+                    break;
+                }
+            }
+        }
+    } 
+    else 
+    {
+        cout << "UNSATISFIABLE" << endl;
+    }
+}
+
+int main() 
+{
+    string filename;
+    cout << "Enter file name: ";
+    cin >> filename;
+
+    ifstream infile(filename);
+    if (!infile.is_open()) 
+    {
+        return 1;
+    }
+
+    int num_vertices = 0;
+    int num_edges = 0;
+
+    if (!(infile >> num_vertices >> num_edges)) 
+    {
+        return 1;
+    }
+
+    vector<Edge> edges;
+    int u = 0;
+    int v = 0;
+    while (infile >> u >> v) 
+    {
+        Edge e = {u, v};
+        edges.push_back(e);
+    }
+    infile.close();
+
+    int num_colors = 0;
+    cout << "Enter number of colors: ";
+    cin >> num_colors;
+
+    solveGraphColoring(num_vertices, edges, num_colors);
+
+    return 0;
+}
